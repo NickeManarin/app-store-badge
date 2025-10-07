@@ -12,25 +12,51 @@
 
 </html>
 <script>
-    // Listen for when we're asked to launch the mini PDP
+    // Listen for when we're asked to launch the PDP
     window.addEventListener("message", function (e) {
-        if (e.data && e.data.message === "launch") {
-            // Validate product ID.
-            if (!e.data.productId) {
-                return;
-            }
-
-            const desiredUrl = "ms-windows-store://pdp/" +
-                "?productid=" + encodeURIComponent(e.data.productId) +
-                ((!e.data.cid) ? "" : "&cid=" + encodeURIComponent(e.data.cid)) +
-                "&referrer=appbadge" +
-                "&source=" + (e.data.source ? encodeURIComponent(e.data.source.toLowerCase()) : "") +
-                (e.data.windowMode === "popup" ? "&mode=mini&pos=" : "&pos=") +
-                Math.floor(window.screenLeft * window.devicePixelRatio) +
-                "," + Math.floor(window.screenTop * window.devicePixelRatio) +
-                "," + Math.floor(window.outerWidth * window.devicePixelRatio) +
-                "," + Math.floor(window.outerHeight * window.devicePixelRatio);
-            location.href = desiredUrl;
+        //  Validate the origin of the message sender
+        function isTrustedOrigin(senderOrigin) {
+            // Allow HTTPS origins and localhost for development
+            return senderOrigin.startsWith('https://') || 
+                   senderOrigin.startsWith('http://localhost') ||
+                   senderOrigin.startsWith('https://localhost') ||
+                   senderOrigin.startsWith('http://127.0.0.1') ||
+                   senderOrigin.startsWith('https://127.0.0.1');
         }
+
+        // Validate the message data structure and content
+        function isValidLaunchMessage(data) {
+            // Must be launch message
+            if (!data || data.message !== "launch") {
+                return false;
+            }
+            
+            // Validate productId: string, non-empty, and only contain alphanumeric characters
+            if (!data.productId || 
+                typeof data.productId !== 'string' || 
+                !/^[A-Z0-9]+$/i.test(data.productId)) {
+                return false;
+            }
+            
+            // Validate window mode, must be full
+            if (!data.windowMode || data.windowMode !== "full") {
+                return false;
+            }
+            
+            return true;
+        }
+
+        // Only process valid messages from trusted origins
+        if (!isTrustedOrigin(e.origin) || !isValidLaunchMessage(e.data)) {
+            return;
+        }
+
+        // Data has been validated, safe to use
+        const desiredUrl = "ms-windows-store://pdp/" +
+            "?productid=" + encodeURIComponent(e.data.productId) +
+            ((!e.data.cid) ? "" : "&cid=" + encodeURIComponent(e.data.cid)) +
+            "&referrer=appbadge" +
+            "&source=" + (e.data.source ? encodeURIComponent(e.data.source.toLowerCase()) : "")
+        location.href = desiredUrl;
     });
 </script>
