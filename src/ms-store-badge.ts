@@ -4,17 +4,17 @@ import { throttle } from "./throttle-async";
 /**
  * <ms-store-badge> web component
  *
- * The app badge renders and iframe hosted on a domain whitelisted by Microsoft Edge so that users avoid 
+ * The app badge renders and iframe hosted on a domain whitelisted by Microsoft Edge so that users avoid
  * the browser security pop-up asking to launch another apps. Browsers other than Edge will show the
  * security pop-up.
- * 
+ *
  * Code lives in ADO repo, migrated from GitHub as of 11/2024.
- * 
+ *
  * On non-Windows 10+ machines, it will simply display an href with an image to redirect to the Web PDP
  */
 class MSStoreBadge extends HTMLElement {
   /**
-   * The ID of your app. 
+   * The ID of your app.
    */
   productId: string = "";
 
@@ -22,9 +22,9 @@ class MSStoreBadge extends HTMLElement {
    * The name of your app, used in PSI service.
    */
   productName: string = "";
-  
+
   /**
-   * The optional campaign ID of your app. 
+   * The optional campaign ID of your app.
    */
   cid: string = "";
 
@@ -34,14 +34,13 @@ class MSStoreBadge extends HTMLElement {
   size = "large";
 
   /**
-    * Indicates whether direct or full mode should be launched. Direct is PSI, full is full PDP. 
-    * If popup (mini) is specified, it falls back to full. Otherwise, fallback is direct.
-    */
-  windowMode: "direct" | "full" | "popup" = "direct";
+   * Indicates whether direct or full mode should be launched. Direct is PSI, full is full PDP.
+   */
+  windowMode: "direct" | "full" = "direct";
 
   /**
-    * Indicates whether badge should be in dark mode, light mode, or auto mode.
-    */
+   * Indicates whether badge should be in dark mode, light mode, or auto mode.
+   */
   theme: "dark" | "light" | "auto" = "dark";
 
   /**
@@ -56,24 +55,70 @@ class MSStoreBadge extends HTMLElement {
 
   #languageDetails: SupportedLanguage = MSStoreBadge.englishLanguage;
   #env: "dev" | "prod" = (window as any).__rollup_injected_env || "dev";
-  #iframeLocation = this.#env === "dev" ? "iframe.html" : "https://get.microsoft.com/iframe.html";
-  #imagesLocation = this.#env === "dev" ? "/images" : "https://get.microsoft.com/images";
-  #platformDetails: PlatformDetails = { isWindows: false, windowsVersion: null, isEdgeBrowser: false };
+  #iframeLocation =
+    this.#env === "dev"
+      ? "iframe.html"
+      : "https://get.microsoft.com/iframe.html";
+  #imagesLocation =
+    this.#env === "dev" ? "/images" : "https://get.microsoft.com/images";
+  #platformDetails: PlatformDetails = {
+    isWindows: false,
+    windowsVersion: null,
+    isEdgeBrowser: false,
+  };
   #cspErrorOccurred = false;
 
-  static englishLanguage: SupportedLanguage = { name: "English", code: "en-us", imageLarge: { fileName: "en-us dark.svg" }, imageLargeLight: { fileName: "en-us light.svg" } };
+  static englishLanguage: SupportedLanguage = {
+    name: "English",
+    code: "en-us",
+    imageLarge: { fileName: "en-us dark.svg" },
+    imageLargeLight: { fileName: "en-us light.svg" },
+  };
   static supportedLanguages = MSStoreBadge.createSupportedLanguages();
 
-  private readonly PSIDownloadUrl: string = "https://get.microsoft.com/installer/download/";
+  private readonly PSIDownloadUrl: string =
+    "https://get.microsoft.com/installer/download/";
   private readonly throttleDownload = throttle(performPSIAcquisition, 1500);
-  private readonly imgPSIHandler = () => this.throttleDownload(this.productId, this.productName || "Microsoft Store Direct", undefined, this.getPSIUrl());
-  private readonly imgPDPHandler = (e: MouseEvent) => this.launchApp(e);
+  private readonly handlePSIClick = () => {
+    // PSI only works on Windows - check before downloading
+    if (!this.#platformDetails.isWindows) {
+      this.launchStoreWebPdp();
+      return;
+    }
+    
+    this.throttleDownload(
+      this.productId,
+      this.productName || "Microsoft Store Direct",
+      undefined,
+      this.getPSIUrl()
+    );
+  };
+  private readonly handlePDPClick = () => {
+    this.launchApp();
+  };
+  private readonly handlePSIKeyboard = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this.handlePSIClick();
+    }
+  };
+  private readonly handlePDPKeyboard = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this.handlePDPClick();
+    }
+  };
 
   constructor() {
     super();
+
     // Create our state.
-    this.getPlatformDetails().then(details => this.#platformDetails = details);
-    this.#languageDetails = MSStoreBadge.getSupportedLanguageFromCode(this.language);
+    this.getPlatformDetails().then(
+      (details) => (this.#platformDetails = details)
+    );
+    this.#languageDetails = MSStoreBadge.getSupportedLanguageFromCode(
+      this.language
+    );
     this.language = this.#languageDetails.code;
 
     // Create our HTML elements.
@@ -82,8 +127,6 @@ class MSStoreBadge extends HTMLElement {
     const html = this.createHtml();
     shadow.appendChild(style);
     shadow.appendChild(html);
-
-    
   }
 
   updateImageSrc() {
@@ -97,20 +140,23 @@ class MSStoreBadge extends HTMLElement {
   updateListeners() {
     const img = this.shadowRoot?.querySelector("img");
     // Remove previous listeners if any
-    img?.removeEventListener("click", this.imgPDPHandler);
-    img?.removeEventListener("click", this.imgPSIHandler);
+    img?.removeEventListener("click", this.handlePDPClick);
+    img?.removeEventListener("keydown", this.handlePDPKeyboard);
+    img?.removeEventListener("click", this.handlePSIClick);
+    img?.removeEventListener("keydown", this.handlePSIKeyboard);
 
     // Attach new listeners
     if (this.windowMode === "direct") {
-      img?.addEventListener("click", this.imgPSIHandler);
+      img?.addEventListener("click", this.handlePSIClick);
+      img?.addEventListener("keydown", this.handlePSIKeyboard);
     } else {
-      img?.addEventListener("click", this.imgPDPHandler);
+      img?.addEventListener("click", this.handlePDPClick);
+      img?.addEventListener("keydown", this.handlePDPKeyboard);
     }
   }
 
   // Web component lifecycle callback: component added to DOM
-  connectedCallback() {
-  }
+  connectedCallback() {}
 
   // Web component lifecycle callback: register that we want to observe certain attributes.
   static get observedAttributes(): string[] {
@@ -128,38 +174,67 @@ class MSStoreBadge extends HTMLElement {
 
   // Web component lifecycle callback: when an observed attribute changes.
   attributeChangedCallback(name: string, oldValue: any, newValue: any) {
-    if (name === "size" && (newValue === "large" || newValue === "small") && oldValue !== newValue) {
+    if (
+      name === "size" &&
+      (newValue === "large" || newValue === "small") &&
+      oldValue !== newValue
+    ) {
       this.size = newValue;
       this.updateImageSrc();
-    } else if (name === "language" && newValue !== oldValue && (typeof newValue === "string" || !newValue)) {
-      this.#languageDetails = MSStoreBadge.getSupportedLanguageFromCode(newValue);
+    } else if (
+      name === "language" &&
+      newValue !== oldValue &&
+      (typeof newValue === "string" || !newValue)
+    ) {
+      this.#languageDetails =
+        MSStoreBadge.getSupportedLanguageFromCode(newValue);
       this.language = this.#languageDetails.code;
       this.updateImageSrc();
-    } else if (name === "productid" && newValue !== oldValue && typeof newValue === "string") {
+    } else if (
+      name === "productid" &&
+      newValue !== oldValue &&
+      typeof newValue === "string"
+    ) {
       this.productId = newValue;
-    } else if (name === "productname" && newValue !== oldValue && typeof newValue === "string") {
+    } else if (
+      name === "productname" &&
+      newValue !== oldValue &&
+      typeof newValue === "string"
+    ) {
       this.productName = newValue;
-    } else if (name === "cid" && newValue !== oldValue && typeof newValue === "string") {
+    } else if (
+      name === "cid" &&
+      newValue !== oldValue &&
+      typeof newValue === "string"
+    ) {
       this.cid = newValue;
-    } else if (name === "window-mode" && (newValue === "popup" || newValue === "full" || newValue === "direct") && oldValue !== newValue) {
-      // Deprecated mini mode. If sent, fallback to full.
-      if (this.windowMode === "popup") {
-        this.windowMode = "full";
-      }
+    } else if (
+      name === "window-mode" &&
+      (newValue === "full" || newValue === "direct") &&
+      oldValue !== newValue
+    ) {
       this.windowMode = newValue;
       this.updateImageSrc();
       this.updateListeners();
-    } else if (name === "theme" && (newValue == "dark" || newValue === "light" || newValue === "auto") && oldValue !== newValue) {
+    } else if (
+      name === "theme" &&
+      (newValue == "dark" || newValue === "light" || newValue === "auto") &&
+      oldValue !== newValue
+    ) {
       this.theme = newValue;
       this.updateImageSrc();
-    } else if (name === "animation" && (newValue === "on" || newValue === "off") && oldValue !== newValue) {
+    } else if (
+      name === "animation" &&
+      (newValue === "on" || newValue === "off") &&
+      oldValue !== newValue
+    ) {
       this.animation = newValue;
       this.shadowRoot?.appendChild(this.createStyle());
     }
   }
 
   createStyle(): HTMLStyleElement {
-    var styleString = '';
+    var styleString = "";
     if (this.animation === "on") {
       styleString = `
       :host {
@@ -169,33 +244,28 @@ class MSStoreBadge extends HTMLElement {
       }
 
       iframe {
+        display: block;
         border: none;
         width: 0px;
         height: 0px;
       }
 
       img {
+        display: block;
         border-radius: 8px;
         transition: 0.35s ease;
       }
-      
+
       img:hover {
         transform: translate(0, -4px);
         cursor: pointer;
         box-shadow: 0 12px 40px 20px rgba(0, 0, 0, 0.05);
       }
-        
+
       img.large {
         height: 104px;
-      }
-        
-      div {
-        height: 104px;
-      }`
-
-
-    }
-    else {
+      }`;
+    } else {
       styleString = `
       :host {
         display: inline-block;
@@ -204,24 +274,21 @@ class MSStoreBadge extends HTMLElement {
       }
 
       iframe {
+        display: block;
         border: none;
         width: 0px;
         height: 0px;
       }
 
       img {
+        display: block;
         width: auto;
         border-radius: 8px;
       }
 
       img.large {
         height: 104px;
-      }
-        
-      div {
-        height: 104px;
-      }`
-
+      }`;
     }
     const element = document.createElement("style");
     element.textContent = styleString;
@@ -239,48 +306,72 @@ class MSStoreBadge extends HTMLElement {
     // Use client hints if available.
     // Typescript doesn't yet have support for typing this.
     const navigatorAny = navigator as any;
-    if (navigatorAny.userAgentData && navigatorAny.userAgentData.getHighEntropyValues) {
+    if (
+      navigatorAny.userAgentData &&
+      navigatorAny.userAgentData.getHighEntropyValues
+    ) {
       try {
-        const platformDetails = await navigatorAny.userAgentData.getHighEntropyValues(["platform", "platformVersion"]);
+        const platformDetails =
+          await navigatorAny.userAgentData.getHighEntropyValues([
+            "platform",
+            "platformVersion",
+          ]);
         const isWindows = platformDetails.platform === "Windows";
-        const version = isWindows ? parseFloat(platformDetails?.platformVersion || "") : null;
+        const version = isWindows
+          ? parseFloat(platformDetails?.platformVersion || "")
+          : null;
         return {
           isWindows: isWindows,
           windowsVersion: version,
-          isEdgeBrowser: (navigatorAny.userAgentData.brands || []).some((b: any) => b.brand === "Microsoft Edge")
-        }
+          isEdgeBrowser: (navigatorAny.userAgentData.brands || []).some(
+            (b: any) => b.brand === "Microsoft Edge"
+          ),
+        };
       } catch (error) {
         // Eat the error. We'll try our fallback below.
       }
     }
 
     // Fallback: use navigator.userAgent
-    const windowsUserAgentRegex = new RegExp(/.?Windows NT (\d+\.?\d?\.?\d?\.?\d?)/gi);
+    const windowsUserAgentRegex = new RegExp(
+      /.?Windows NT (\d+\.?\d?\.?\d?\.?\d?)/gi
+    );
     const matchResults = windowsUserAgentRegex.exec(navigator.userAgent);
     if (matchResults && matchResults.length >= 2) {
       return {
         isWindows: true,
         windowsVersion: parseFloat(matchResults[1]),
-        isEdgeBrowser: !!navigator.userAgent.match("Edg/")
-      }
+        isEdgeBrowser: !!navigator.userAgent.match("Edg/"),
+      };
     }
 
     // Some other platform besides Windows.
     return {
       isWindows: false,
       windowsVersion: null,
-      isEdgeBrowser: !!navigator.userAgent.match("Edg/")
-    }
+      isEdgeBrowser: !!navigator.userAgent.match("Edg/"),
+    };
   }
 
-  private static getSupportedLanguageFromCode(languageCode: string | null | undefined): SupportedLanguage {
+  private static getSupportedLanguageFromCode(
+    languageCode: string | null | undefined
+  ): SupportedLanguage {
     // If language code isn't set, auto-detect
     if (!languageCode) {
       return MSStoreBadge.getSupportedLanguageFromUserAgent();
     }
 
     // See if the language code is a supported language. First check for edge case (same language letter codes, compare entire codes)  then check for second edge case (3 letter codes; e.g. fil), then normal case (2 letter codes).
-    const supportedLanguage = MSStoreBadge.supportedLanguages.find(l => l.code === languageCode.toLowerCase()) || MSStoreBadge.supportedLanguages.find(l => l.code.substring(0, 3) === languageCode.toLowerCase()) || MSStoreBadge.supportedLanguages.find(l => l.code.substring(0, 2) === languageCode.toLowerCase());
+    const supportedLanguage =
+      MSStoreBadge.supportedLanguages.find(
+        (l) => l.code === languageCode.toLowerCase()
+      ) ||
+      MSStoreBadge.supportedLanguages.find(
+        (l) => l.code.substring(0, 3) === languageCode.toLowerCase()
+      ) ||
+      MSStoreBadge.supportedLanguages.find(
+        (l) => l.code.substring(0, 2) === languageCode.toLowerCase()
+      );
     if (supportedLanguage) {
       return supportedLanguage;
     }
@@ -291,7 +382,9 @@ class MSStoreBadge extends HTMLElement {
 
   static getSupportedLanguageFromUserAgent(): SupportedLanguage {
     // Is the navigator language one of our supported languages? If so, use that.
-    const navigatorLanguage = MSStoreBadge.supportedLanguages.find(l => l.code.toLowerCase() === (navigator.language || '').toLowerCase());
+    const navigatorLanguage = MSStoreBadge.supportedLanguages.find(
+      (l) => l.code.toLowerCase() === (navigator.language || "").toLowerCase()
+    );
     if (navigatorLanguage) {
       return navigatorLanguage;
     }
@@ -300,8 +393,10 @@ class MSStoreBadge extends HTMLElement {
     // See if any of the navigator languages are supported.
     if (navigator.languages) {
       var match = navigator.languages
-        .map(lang => MSStoreBadge.supportedLanguages.find(l => l.code === lang))
-        .find(l => !!l);
+        .map((lang) =>
+          MSStoreBadge.supportedLanguages.find((l) => l.code === lang)
+        )
+        .find((l) => !!l);
       if (match) {
         return match;
       }
@@ -312,7 +407,9 @@ class MSStoreBadge extends HTMLElement {
     const dashIndex = navigator.language.indexOf("-");
     if (dashIndex > 0) {
       const languageOnly = navigator.language.substring(0, dashIndex);
-      const supportedLanguage = MSStoreBadge.supportedLanguages.find(l => l.code.toLowerCase() === languageOnly.toLowerCase());
+      const supportedLanguage = MSStoreBadge.supportedLanguages.find(
+        (l) => l.code.toLowerCase() === languageOnly.toLowerCase()
+      );
       if (supportedLanguage) {
         return supportedLanguage;
       }
@@ -336,11 +433,15 @@ class MSStoreBadge extends HTMLElement {
     image.src = this.getImageSource();
     image.className = this.getImageClass();
     image.alt = "Microsoft Store app badge";
+    image.setAttribute("tabindex", "0");
+    image.setAttribute("role", "button");
     // Default launch method is now direct, which is PSI
     if (this.windowMode === "direct") {
-      image.addEventListener("click", this.imgPSIHandler);
+      image.addEventListener("click", this.handlePSIClick);
+      image.addEventListener("keydown", this.handlePSIKeyboard);
     } else {
-      image.addEventListener("click", this.imgPDPHandler);
+      image.addEventListener("click", this.handlePDPClick);
+      image.addEventListener("keydown", this.handlePDPKeyboard);
     }
     return image;
   }
@@ -349,20 +450,21 @@ class MSStoreBadge extends HTMLElement {
     var fileName = null;
     //Dark mode
     if (this.theme === "dark") {
-      fileName = this.#languageDetails.imageLarge.fileName
+      fileName = this.#languageDetails.imageLarge.fileName;
     }
     //Light mode
     else if (this.theme === "light") {
-      fileName = this.#languageDetails.imageLargeLight.fileName
+      fileName = this.#languageDetails.imageLargeLight.fileName;
     }
     //Auto mode
     else if (this.theme === "auto") {
-      const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
-      if (isDark) { //If detected dark mode
-        fileName = this.#languageDetails.imageLargeLight.fileName
-      }
-      else { //If detected light mode
-        fileName = this.#languageDetails.imageLarge.fileName
+      const isDark = window.matchMedia("(prefers-color-scheme:dark)").matches;
+      if (isDark) {
+        //If detected dark mode
+        fileName = this.#languageDetails.imageLargeLight.fileName;
+      } else {
+        //If detected light mode
+        fileName = this.#languageDetails.imageLarge.fileName;
       }
     }
     return `${this.#imagesLocation}/${fileName}`;
@@ -372,12 +474,15 @@ class MSStoreBadge extends HTMLElement {
     return this.size === "large" ? "large" : "small";
   }
 
-  launchApp(e: MouseEvent) {
+  launchApp(): void {
     if (!this.productId) {
       return;
     }
 
-    if (this.#platformDetails.isWindows && this.#platformDetails.isEdgeBrowser) {
+    if (
+      this.#platformDetails.isWindows &&
+      this.#platformDetails.isEdgeBrowser
+    ) {
       // Are we on Edge on Windows? Launch the full PDP via the iframe hosted on Edge's whitelisted domain.
       this.launchStoreAppPdpViaWhitelistedDomain();
     } else if (this.#platformDetails.isWindows) {
@@ -385,12 +490,16 @@ class MSStoreBadge extends HTMLElement {
       this.launchFullStoreApp();
     } else {
       // We're not on Windows so we can't launch the app. Navigate to the web PDP.
-      this.launchStoreWebPdp(e);
+      this.launchStoreWebPdp();
     }
   }
 
   getPSIUrl(): string {
-    return `${this.PSIDownloadUrl}${this.productId.toUpperCase()}?referrer=appbadge&source=${encodeURIComponent(window.location.hostname.toLowerCase())}`;
+    return `${
+      this.PSIDownloadUrl
+    }${this.productId.toUpperCase()}?referrer=appbadge&source=${encodeURIComponent(
+      window.location.hostname.toLowerCase()
+    )}`;
   }
 
   launchFullStoreApp() {
@@ -398,7 +507,7 @@ class MSStoreBadge extends HTMLElement {
     searchParams.append("productid", this.productId);
     searchParams.append("referrer", "appbadge");
     searchParams.append("source", window.location.hostname.toLowerCase());
-    
+
     if (this.cid) {
       searchParams.append("cid", this.cid);
     }
@@ -417,7 +526,7 @@ class MSStoreBadge extends HTMLElement {
     } else {
       this.#launchViaProtocolOnCspError();
 
-      // Now launch via the whitelisted iframe. 
+      // Now launch via the whitelisted iframe.
       const args = {
         message: "launch",
         productId: this.productId,
@@ -429,19 +538,26 @@ class MSStoreBadge extends HTMLElement {
     }
   }
 
-  launchStoreWebPdp(e: MouseEvent): void {
+  launchStoreWebPdp(): void {
     var url = "";
     if (!this.cid) {
-      url = `https://apps.microsoft.com/store/detail/${this.productId}?referrer=appbadge&source=${encodeURIComponent(window.location.hostname.toLowerCase())}`;
-    }
-    else {
-      url = `https://apps.microsoft.com/store/detail/${this.productId}?cid=${encodeURIComponent(this.cid)}&referrer=appbadge&source=${encodeURIComponent(window.location.hostname.toLowerCase())}`;
-    }
-    if (e.ctrlKey) {
-      window.open(url, "_blank");
+      url = `https://apps.microsoft.com/store/detail/${
+        this.productId
+      }?referrer=appbadge&source=${encodeURIComponent(
+        window.location.hostname.toLowerCase()
+      )}`;
     } else {
-      window.location.href = url;
+      url = `https://apps.microsoft.com/store/detail/${
+        this.productId
+      }?cid=${encodeURIComponent(
+        this.cid
+      )}&referrer=appbadge&source=${encodeURIComponent(
+        window.location.hostname.toLowerCase()
+      )}`;
     }
+
+    // Launch PDP in new tab
+    window.open(url, "_blank");
   }
 
   /**
@@ -458,11 +574,16 @@ class MSStoreBadge extends HTMLElement {
         this.#cspErrorOccurred = true;
         this.launchFullStoreApp();
       }
-    }
-    document.addEventListener(cspErrorEventName, cspErrorListener, { once: true }); // Once, because we'll only get the error once, even if we try to launch multiple times.
+    };
+    document.addEventListener(cspErrorEventName, cspErrorListener, {
+      once: true,
+    }); // Once, because we'll only get the error once, even if we try to launch multiple times.
 
     // Remove the CSP error listener 2s after we try to launch. We don't want to listen for other CSP errors that may exist on the page.
-    setTimeout(() => document.removeEventListener(cspErrorEventName, cspErrorListener), 2000);
+    setTimeout(
+      () => document.removeEventListener(cspErrorEventName, cspErrorListener),
+      2000
+    );
   }
 
   static createSupportedLanguages(): SupportedLanguage[] {
@@ -543,21 +664,26 @@ class MSStoreBadge extends HTMLElement {
     languageMap.set("Urdu", "ur");
     languageMap.set("Uzbek", "uz");
     languageMap.set("Vietnamese", "vi");
+    languageMap.set("Welsh", "cy");
+    languageMap.set("Test", "ts");
 
     let language: SupportedLanguage[] = [];
 
     for (let name of languageMap.keys()) {
       let currLanguage: SupportedLanguage = {
         name: name,
-        imageLarge: { fileName: languageMap.get(name)!.concat(" ").concat("dark.svg") },
-        imageLargeLight: { fileName: languageMap.get(name)!.concat(" ").concat("light.svg") },
-        code: languageMap.get(name) || ""
-      }
+        imageLarge: {
+          fileName: languageMap.get(name)!.concat(" ").concat("dark.svg"),
+        },
+        imageLargeLight: {
+          fileName: languageMap.get(name)!.concat(" ").concat("light.svg"),
+        },
+        code: languageMap.get(name) || "",
+      };
       language.push(currLanguage);
     }
     return language;
   }
-
 }
 
 interface SupportedLanguage {

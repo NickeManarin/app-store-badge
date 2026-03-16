@@ -1,6 +1,8 @@
 node_modules/
 /lib/
 /test/
+dist/
+build/
 custom-elements.json
 # top level source
 my-element.js
