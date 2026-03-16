@@ -1,0 +1,8 @@
+schemaVersion: 0.0.1
+isProduction: true
+accountableOwners:
+  service: 08017428-4bd3-446d-a7e9-3a428afa5ba3
+routing:
+  defaultAreaPath:
+    org: microsoft
+    path: OS\Core\PAX\Store\Client\Store For Web

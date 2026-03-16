@@ -69,7 +69,7 @@ Be mindful that the HTML-only version of the badge loses some functionality of t
 
 ## Running the code
 
-To run code locally, `npm run dev`, then launch http://localhost:8000/create-your-own.html
+To run code locally, `npm run serve`, then launch http://localhost:8000/create-your-own.html
 
 To build for production, `npm run build`. This will create the production artifacts in `/dist`.
 
